@@ -1,0 +1,55 @@
+---
+title: "Wage Prediction"
+author: "Steven Lotito"
+date: "June 16, 2015"
+output: html_document
+runtime: shiny
+---
+
+```{r echo=FALSE,warning=FALSE,error=FALSE}
+  library(caret)
+  library(randomForest)
+  library(data.table)
+```
+
+```{r model, echo=FALSE, cache=TRUE}
+  if(!file.exists("adult.data")){
+    download.file("http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", destfile="adult.data", method="curl")
+  }
+  adult <- read.csv("adult.data", header = FALSE, sep = ",", strip.white=TRUE,  na.strings=c("NA","NaN", "", "?"))
+  adult <- setNames(adult, c("age","workclass","fnlwgt","education","education.num","marital.status","occupation","relationship","race","sex","capital.gain", "capital.loss", "hours.wk", "native.country","wages"))
+  
+  # we can't deal with NA predictors in the random forest, so we're going to omit them from our predictions
+  adult <- adult[complete.cases(adult),]
+  
+  inTrain <- createDataPartition(y=adult$wages, p=0.70, list = FALSE)
+  training <- adult[inTrain,]
+  testing <- adult[-inTrain,]
+  
+  table(training$wages)
+  
+  # tune a random forest 
+  bestmtry <- tuneRF(training[-15], training$wages, ntreeTry=150, trace=TRUE, plot=TRUE, dobest=FALSE)
+  mtry.use <- bestmtry[ bestmtry[3,] == min(bestmtry[3,]),][[1]]
+  
+  rf.model <-randomForest(wages~., data=training, mtry=mtry.use, ntree=150, importance=TRUE, keep.forest = TRUE, do.trace = TRUE)
+  
+  preds <- predict(rf.model, newdata=testing)
+  
+  accuracy <- sum(testing$wages == preds)/nrow(testing)
+  
+  confusionMatrix(preds, testing$wages)
+```
+
+```{r, echo=FALSE}
+inputPanel(
+  selectInput("workclass", label = "Work Classification",
+              choices = c("Federal-gov","Local-gov","Never-worked","Private","Self-emp-inc","Self-emp-not-inc","State-gov","Without-pay"), selected = "Private"),
+  
+  sliderInput("bw_adjust", label = "Bandwidth adjustment:",
+              min = 0.2, max = 2, value = 1, step = 0.2)
+)
+
+```
+
+
